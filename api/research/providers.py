@@ -6,7 +6,7 @@ and writing final reports using the existing DeepWiki model clients.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable, AsyncGenerator
 from datetime import datetime
 
 from api.config import get_model_config, GOOGLE_API_KEY, OPENAI_API_KEY
@@ -265,8 +265,137 @@ async def write_final_report_streaming(
     learnings: List[str],
     provider: str = "google",
     model: Optional[str] = None,
-    on_chunk: Optional[Any] = None
-):
+    on_chunk: Optional[Callable[[str], Any]] = None
+) -> AsyncGenerator[str, None]:
+    """
+    Stream a comprehensive final report based on all research learnings.
+
+    Args:
+        original_query: The original research question
+        learnings: All learnings collected during research
+        provider: AI model provider to use
+        model: Specific model name
+        on_chunk: Optional callback function to receive report chunks as they are generated
+
+    Yields:
+        Report text chunks in markdown format
+    """
+    learnings_text = "\n".join([f"{i+1}. {learning}" for i, learning in enumerate(learnings)])
+
+    prompt = f"""Based on the following research question and all the learnings gathered from analyzing the codebase,
+write a comprehensive final report.
+
+<question>
+{original_query}
+</question>
+
+<learnings>
+{learnings_text}
+</learnings>
+
+Write a detailed technical report that:
+1. Directly answers the original question
+2. Incorporates ALL the learnings from the research
+3. Includes specific code references (file paths, function names, classes, etc.)
+4. Explains architectural patterns and design decisions
+5. Provides code examples where relevant
+6. Is formatted in clean Markdown
+
+The report should be comprehensive (aim for detailed coverage) and include all relevant technical details discovered during research.
+
+Write the report in Markdown format."""
+
+    try:
+        model_config = get_model_config(provider, model)
+
+        if provider == "openai":
+            client = OpenAIClient()
+            model_kwargs = {
+                "model": model or model_config["model"],
+                "temperature": 0.7,
+                "stream": True
+            }
+
+            api_kwargs = client.convert_inputs_to_api_kwargs(
+                input=f"{system_prompt()}\n\n{prompt}",
+                model_kwargs=model_kwargs,
+                model_type=ModelType.LLM
+            )
+
+            response = await client.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
+            # Handle streaming response from Openai
+            async for chunk in response:
+                choices = getattr(chunk, "choices", [])
+                if len(choices) > 0:
+                    delta = getattr(choices[0], "delta", None)
+                    if delta is not None:
+                        text = getattr(delta, "content", None)
+                        if text is not None:
+                            await on_chunk(text)
+
+            
+            # response = await client.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
+
+            # # Stream the response
+            # from api.openai_client import handle_streaming_response
+            # for chunk_content in handle_streaming_response(response):
+            #     if chunk_content:
+            #         if on_chunk:
+            #             await on_chunk(chunk_content)
+            #         yield chunk_content
+
+        elif provider == "google":
+            import google.generativeai as genai
+
+            # Configure API key
+            if GOOGLE_API_KEY:
+                genai.configure(api_key=GOOGLE_API_KEY)
+
+            model_name = model or model_config["model"]
+            gen_model = genai.GenerativeModel(
+                model_name=model_name,
+                generation_config={
+                    "temperature": 0.7,
+                    "response_mime_type": "text/plain"
+                }
+            )
+
+            full_prompt = f"{system_prompt()}\n\n{prompt}"
+            stream_obj = gen_model.generate_content(full_prompt, stream=True)
+
+            # Handle both sync and async stream types
+            if hasattr(stream_obj, '__aiter__'):
+                async for chunk in stream_obj:  # type: ignore
+                    text = getattr(chunk, 'text', None)
+                    if text:
+                        if on_chunk:
+                            await on_chunk(text)
+                        yield text
+            else:
+                for chunk in stream_obj:
+                    text = getattr(chunk, 'text', None)
+                    if text:
+                        if on_chunk:
+                            await on_chunk(text)
+                        yield text
+
+        else:
+            logger.warning(f"Unsupported provider {provider}, streaming not available")
+            # Fallback to regular report
+            full_report = await write_final_report(original_query, learnings, provider, model)
+            yield full_report
+
+    except Exception as e:
+        logger.error(f"Error generating streaming final report: {e}")
+        yield f"Error generating final report: {str(e)}"
+
+
+async def write_final_report(
+    original_query: str,
+    learnings: List[str],
+    provider: str = "google",
+    model: Optional[str] = None
+) -> str:
     """
     Write a comprehensive final report based on all research learnings.
     
@@ -311,8 +440,7 @@ Write the report in Markdown format."""
             client = OpenAIClient()
             model_kwargs = {
                 "model": model or model_config["model"],
-                "temperature": 0.7,
-                "stream": True
+                "temperature": 0.7
             }
             
             api_kwargs = client.convert_inputs_to_api_kwargs(
@@ -323,14 +451,8 @@ Write the report in Markdown format."""
             
             response = await client.acall(api_kwargs=api_kwargs, model_type=ModelType.LLM)
             
-            # Stream chunks
-            async for chunk in response:
-                if hasattr(chunk, 'choices') and chunk.choices:
-                    delta = chunk.choices[0].delta
-                    if hasattr(delta, 'content') and delta.content:
-                        if on_chunk:
-                            await on_chunk(delta.content)
-                        yield delta.content
+            if hasattr(response, 'choices') and response.choices:
+                return response.choices[0].message.content
         
         elif provider == "google":
             import google.generativeai as genai
@@ -346,25 +468,14 @@ Write the report in Markdown format."""
             )
             
             full_prompt = f"{system_prompt()}\n\n{prompt}"
-            response = gen_model.generate_content(full_prompt, stream=True)
+            response = gen_model.generate_content(full_prompt)
             
-            # Stream chunks
-            for chunk in response:
-                if hasattr(chunk, 'text') and chunk.text:
-                    if on_chunk:
-                        await on_chunk(chunk.text)
-                    yield chunk.text
+            if hasattr(response, 'text'):
+                return response.text
         
-        else:
-            logger.warning(f"Unsupported provider {provider}, returning error message")
-            error_msg = "Error: Unable to generate report with the specified provider."
-            if on_chunk:
-                await on_chunk(error_msg)
-            yield error_msg
+        logger.warning(f"Unsupported provider {provider}, returning error message")
+        return "Error: Unable to generate report with the specified provider."
         
     except Exception as e:
         logger.error(f"Error writing final report: {e}")
-        error_msg = f"Error generating final report: {str(e)}"
-        if on_chunk:
-            await on_chunk(error_msg)
-        yield error_msg
+        return f"Error generating final report: {str(e)}"

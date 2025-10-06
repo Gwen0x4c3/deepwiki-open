@@ -15,6 +15,7 @@ from api.rag import RAG
 from .providers import (
     generate_research_queries,
     process_research_results,
+    write_final_report,
     write_final_report_streaming
 )
 
@@ -214,6 +215,17 @@ async def deep_research(
             final_report_chunks.append(chunk)
         
         final_report = ''.join(final_report_chunks)
+
+        # Non Stream the final report
+        # final_report = await write_final_report(
+        #     original_query=query,
+        #     learnings=all_learnings,
+        #     provider=provider,
+        #     model=model
+        # )
+        # if on_progress:
+        #     await on_progress(final_report)
+        
     else:
         final_report = f"# Research Results\n\nUnable to find sufficient information in the codebase to answer: {query}\n\nPlease try rephrasing your question or ensure the repository has been properly indexed."
         if on_progress:

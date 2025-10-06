@@ -20,6 +20,8 @@ import { createChatWebSocket, closeWebSocket, ChatCompletionRequest } from '@/ut
 import getRepoUrl from '@/utils/getRepoUrl';
 import { RepoInfo } from '@/types/repoinfo';
 
+type ResearchLevel = 'lite' | 'medium' | 'heavy';
+
 interface ChatModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -36,9 +38,8 @@ interface ChatModalProps {
   onCustomModelChange: (model: string) => void;
   deepResearch: boolean;
   onDeepResearchChange: (enabled: boolean) => void;
+  initialResearchLevel?: ResearchLevel;
 }
-
-type ResearchLevel = 'lite' | 'medium' | 'heavy';
 
 const ChatModal: React.FC<ChatModalProps> = ({
   isOpen,
@@ -55,14 +56,15 @@ const ChatModal: React.FC<ChatModalProps> = ({
   onIsCustomModelChange,
   onCustomModelChange,
   deepResearch,
-  onDeepResearchChange
+  onDeepResearchChange,
+  initialResearchLevel = 'medium'
 }) => {
   const [contexts, setContexts] = useState<ChatContext[]>([]);
   const [currentContext, setCurrentContext] = useState<ChatContext | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [maxHistoryMessages, setMaxHistoryMessages] = useState(10);
-  const [researchLevel, setResearchLevel] = useState<ResearchLevel>('medium');
+  const [researchLevel, setResearchLevel] = useState<ResearchLevel>(initialResearchLevel as ResearchLevel);
   
   const webSocketRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -231,10 +233,10 @@ const ChatModal: React.FC<ChatModalProps> = ({
           }
 
           // Append residual (non-think content)
-          if (residual && residual.trim().length > 0) {
+          if (residual) {
             residual = residual.replace(thinkRegex, '');
             fullResponse += residual;
-            streamingMessageRef.current = fullResponse;
+            streamingMessageRef.current = normalizeStreamingMarkdown(fullResponse);
             setCurrentContext(prev => prev ? { ...prev } : null);
           }
         },
@@ -388,7 +390,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
           if (residual && residual.trim().length > 0) {
             residual = residual.replace(thinkRegex, '');
             fullResponse += residual;
-            streamingMessageRef.current = fullResponse;
+            streamingMessageRef.current = normalizeStreamingMarkdown(fullResponse);
             setCurrentContext(prev => prev ? { ...prev } : null);
           }
         },
@@ -436,6 +438,20 @@ const ChatModal: React.FC<ChatModalProps> = ({
       console.error('Error sending message:', error);
       setIsLoading(false);
       streamingMessageRef.current = '';
+    }
+  };
+
+  // Normalize streaming markdown display by auto-closing an odd code fence and normalizing line breaks
+  const normalizeStreamingMarkdown = (s: string): string => {
+    try {
+      let t = s.replace(/\r\n?/g, '\n');
+      const fenceCount = (t.match(/```/g) ?? []).length;
+      if (fenceCount % 2 === 1) {
+        t = t + '\n```';
+      }
+      return t;
+    } catch {
+      return s;
     }
   };
 
