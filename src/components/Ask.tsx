@@ -21,9 +21,18 @@ interface Provider {
   supportsCustomModel?: boolean;
 }
 
+interface ThinkingStep {
+  id: string;
+  content: string;
+  timestamp: number;
+  status: 'active' | 'completed' | 'error';
+  duration?: number; // in milliseconds
+}
+
 interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  thinkings?: ThinkingStep[];
 }
 
 interface ResearchStage {
@@ -74,6 +83,8 @@ const Ask: React.FC<AskProps> = ({
   const [conversationHistory, setConversationHistory] = useState<Message[]>([]);
   const [researchIteration, setResearchIteration] = useState(0);
   const [researchComplete, setResearchComplete] = useState(false);
+  const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
+  const [currentThinkingId, setCurrentThinkingId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const responseRef = useRef<HTMLDivElement>(null);
   const providerRef = useRef(provider);
@@ -156,6 +167,8 @@ const Ask: React.FC<AskProps> = ({
     setResearchComplete(false);
     setResearchStages([]);
     setCurrentStageIndex(0);
+    setThinkingSteps([]);
+    setCurrentThinkingId(null);
     if (inputRef.current) {
       inputRef.current.focus();
     }
@@ -338,30 +351,64 @@ const Ask: React.FC<AskProps> = ({
         requestBody,
         // Message handler
         (message: string) => {
-          fullResponse += message;
-          setResponse(fullResponse);
+          // Extract ALL <think ...>...</think> blocks and remove them from the content
+          const thinkRegex = /<think[^>]*>([\s\S]*?)<\/think>/g;
+          let residual = message;
+          let match: RegExpExecArray | null;
+          const nowMs = Date.now();
+          while ((match = thinkRegex.exec(message)) !== null && deepResearch) {
+            const tag = match[0];
+            const inner = match[1];
+            // Try to grab timestamp attribute
+            const tsMatch = tag.match(/timestamp=\"(\d+)\"/);
+            const ts = tsMatch ? parseInt(tsMatch[1]) : nowMs;
+            const stepId = `step-${ts}`;
 
-          // Extract research stage if this is a deep research response
-          if (deepResearch) {
-            const stage = extractResearchStage(fullResponse, newIteration);
-            if (stage) {
-              // Add the stage to the research stages if it's not already there
-              setResearchStages(prev => {
-                // Check if we already have this stage
-                const existingStageIndex = prev.findIndex(s => s.iteration === stage.iteration && s.type === stage.type);
-                if (existingStageIndex >= 0) {
-                  // Update existing stage
-                  const newStages = [...prev];
-                  newStages[existingStageIndex] = stage;
-                  return newStages;
-                } else {
-                  // Add new stage
-                  return [...prev, stage];
-                }
-              });
+            // Complete previous active step
+            if (currentThinkingId) {
+              setThinkingSteps(prev => prev.map(step =>
+                step.id === currentThinkingId
+                  ? { ...step, status: 'completed', duration: ts - step.timestamp }
+                  : step
+              ));
+            }
 
-              // Update current stage index to the latest stage
-              setCurrentStageIndex(researchStages.length);
+            // Add new step as active
+            const newStep: ThinkingStep = {
+              id: stepId,
+              content: inner,
+              timestamp: ts,
+              status: 'active'
+            };
+            setThinkingSteps(prev => [...prev, newStep]);
+            setCurrentThinkingId(stepId);
+
+            // Remove this think block from residual content
+            residual = residual.replace(tag, '');
+          }
+
+          // Append any non-think residual content to the response
+          if (residual && residual.trim().length > 0) {
+            // Ensure no stray think tags leak
+            residual = residual.replace(thinkRegex, '');
+            fullResponse += residual;
+            setResponse(fullResponse);
+
+            if (deepResearch) {
+              const stage = extractResearchStage(fullResponse, newIteration);
+              if (stage) {
+                setResearchStages(prev => {
+                  const existingStageIndex = prev.findIndex(s => s.iteration === stage.iteration && s.type === stage.type);
+                  if (existingStageIndex >= 0) {
+                    const newStages = [...prev];
+                    newStages[existingStageIndex] = stage;
+                    return newStages;
+                  } else {
+                    return [...prev, stage];
+                  }
+                });
+                setCurrentStageIndex(researchStages.length);
+              }
             }
           }
         },
@@ -580,16 +627,55 @@ const Ask: React.FC<AskProps> = ({
         requestBody,
         // Message handler
         (message: string) => {
-          fullResponse += message;
-          setResponse(fullResponse);
+          // Extract ALL <think ...>...</think> blocks and remove them from the content
+          const thinkRegex = /<think[^>]*>([\s\S]*?)<\/think>/g;
+          let residual = message;
+          let match: RegExpExecArray | null;
+          const nowMs = Date.now();
+          while ((match = thinkRegex.exec(message)) !== null && deepResearch) {
+            const tag = match[0];
+            const inner = match[1];
+            // Try to grab timestamp attribute
+            const tsMatch = tag.match(/timestamp=\"(\d+)\"/);
+            const ts = tsMatch ? parseInt(tsMatch[1]) : nowMs;
+            const stepId = `step-${ts}`;
 
-          // Extract research stage if this is a deep research response
-          if (deepResearch) {
-            const stage = extractResearchStage(fullResponse, 1); // First iteration
-            if (stage) {
-              // Add the stage to the research stages
-              setResearchStages([stage]);
-              setCurrentStageIndex(0);
+            // Complete previous active step
+            if (currentThinkingId) {
+              setThinkingSteps(prev => prev.map(step =>
+                step.id === currentThinkingId
+                  ? { ...step, status: 'completed', duration: ts - step.timestamp }
+                  : step
+              ));
+            }
+
+            // Add new step as active
+            const newStep: ThinkingStep = {
+              id: stepId,
+              content: inner,
+              timestamp: ts,
+              status: 'active'
+            };
+            setThinkingSteps(prev => [...prev, newStep]);
+            setCurrentThinkingId(stepId);
+
+            // Remove this think block from residual content
+            residual = residual.replace(tag, '');
+          }
+
+          // Append any non-think residual content to the response
+          if (residual && residual.trim().length > 0) {
+            // Ensure no stray think tags leak
+            residual = residual.replace(thinkRegex, '');
+            fullResponse += residual;
+            setResponse(fullResponse);
+
+            if (deepResearch) {
+              const stage = extractResearchStage(fullResponse, 1);
+              if (stage) {
+                setResearchStages([stage]);
+                setCurrentStageIndex(0);
+              }
             }
           }
         },
@@ -603,6 +689,31 @@ const Ask: React.FC<AskProps> = ({
         },
         // Close handler
         () => {
+          // Mark all thinking steps as completed
+          if (currentThinkingId && deepResearch) {
+            const now = Date.now();
+            setThinkingSteps(prev => prev.map(step => 
+              step.id === currentThinkingId
+                ? { ...step, status: 'completed', duration: now - step.timestamp }
+                : step
+            ));
+            setCurrentThinkingId(null);
+          }
+
+          // Save thinkings to conversation history
+          if (deepResearch && thinkingSteps.length > 0) {
+            const userMessage: Message = {
+              role: 'user',
+              content: question
+            };
+            const assistantMessage: Message = {
+              role: 'assistant',
+              content: fullResponse,
+              thinkings: thinkingSteps
+            };
+            setConversationHistory([userMessage, assistantMessage]);
+          }
+
           // If deep research is enabled, check if we should continue
           if (deepResearch) {
             const isComplete = checkIfResearchComplete(fullResponse);
@@ -730,6 +841,73 @@ const Ask: React.FC<AskProps> = ({
             )}
           </div>
         </form>
+
+        {/* Thinking Steps Sidebar */}
+        {deepResearch && thinkingSteps.length > 0 && (
+          <div className="fixed right-4 top-20 w-80 max-h-[calc(100vh-120px)] overflow-y-auto bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-700 rounded-lg shadow-xl z-50">
+            <div className="sticky top-0 bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-4 py-3 rounded-t-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span className="text-sm font-semibold">Deep Research</span>
+                </div>
+                <span className="text-xs bg-white/20 px-2 py-1 rounded">{thinkingSteps.length} steps</span>
+              </div>
+            </div>
+            
+            <div className="p-4 space-y-3">
+              {thinkingSteps.map((step, index) => (
+                <div
+                  key={step.id}
+                  className={`relative pl-6 pb-3 border-l-2 ${
+                    step.status === 'active' 
+                      ? 'border-purple-500' 
+                      : step.status === 'completed'
+                      ? 'border-gray-300 dark:border-gray-600'
+                      : 'border-red-500'
+                  } ${index === thinkingSteps.length - 1 ? 'border-l-0' : ''}`}
+                >
+                  {/* Status indicator dot */}
+                  <div className={`absolute left-0 top-1 transform -translate-x-1/2 w-3 h-3 rounded-full border-2 ${
+                    step.status === 'active'
+                      ? 'bg-purple-500 border-purple-300 animate-pulse'
+                      : step.status === 'completed'
+                      ? 'bg-green-500 border-green-300'
+                      : 'bg-red-500 border-red-300'
+                  }`}></div>
+                  
+                  {/* Step content */}
+                  <div className={`${
+                    step.status === 'completed' ? 'opacity-60' : 'opacity-100'
+                  } transition-opacity`}>
+                    <div className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
+                      {step.content}
+                    </div>
+                    
+                    {/* Duration or timestamp */}
+                    <div className="mt-1 flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                      {step.status === 'completed' && step.duration ? (
+                        <span className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                          ⏱ {(step.duration / 1000).toFixed(1)}s
+                        </span>
+                      ) : step.status === 'active' ? (
+                        <span className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded animate-pulse">
+                          ⏳ In progress...
+                        </span>
+                      ) : null}
+                      <span className="opacity-50">
+                        {new Date(step.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Response area */}
         {response && (

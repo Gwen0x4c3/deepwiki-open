@@ -137,43 +137,87 @@ async def handle_websocket_chat(websocket: WebSocket):
                 assistant_msg = request.messages[i + 1]
 
                 if user_msg.role == "user" and assistant_msg.role == "assistant":
+                    # Strip any <think>...</think> blocks from assistant content before storing in memory
+                    import re as _re
+                    clean_assistant = _re.sub(r"<think[\s\S]*?<\/think>", "", assistant_msg.content or "")
                     request_rag.memory.add_dialog_turn(
                         user_query=user_msg.content,
-                        assistant_response=assistant_msg.content
+                        assistant_response=clean_assistant
                     )
 
-        # Check if this is a Deep Research request
+        # Determine Deep Research strictly by the LAST user message
         is_deep_research = False
-        research_iteration = 1
-
-        # Process messages to detect Deep Research requests
-        for msg in request.messages:
-            if hasattr(msg, 'content') and msg.content and "[DEEP RESEARCH]" in msg.content:
+        if last_message.role == "user" and hasattr(last_message, 'content') and last_message.content:
+            if "[DEEP RESEARCH]" in last_message.content:
                 is_deep_research = True
-                # Only remove the tag from the last message
-                if msg == request.messages[-1]:
-                    # Remove the Deep Research tag
-                    msg.content = msg.content.replace("[DEEP RESEARCH]", "").strip()
-
-        # Count research iterations if this is a Deep Research request
+                # Remove the Deep Research tag ONLY from the last message
+                last_message.content = last_message.content.replace("[DEEP RESEARCH]", "").strip()
+            else:
+                # Optional continuation only if the user explicitly requests to continue research in this last message
+                lm = last_message.content.lower()
+                if ("continue" in lm and "research" in lm) or ("继续" in lm and "研究" in lm):
+                    is_deep_research = True
+        
+        # If this is a deep research request, handle it separately
         if is_deep_research:
-            research_iteration = sum(1 for msg in request.messages if msg.role == 'assistant') + 1
-            logger.info(f"Deep Research request detected - iteration {research_iteration}")
-
-            # Check if this is a continuation request
-            if "continue" in last_message.content.lower() and "research" in last_message.content.lower():
-                # Find the original topic from the first user message
-                original_topic = None
-                for msg in request.messages:
-                    if msg.role == "user" and "continue" not in msg.content.lower():
-                        original_topic = msg.content.replace("[DEEP RESEARCH]", "").strip()
-                        logger.info(f"Found original research topic: {original_topic}")
-                        break
-
-                if original_topic:
-                    # Replace the continuation message with the original topic
-                    last_message.content = original_topic
-                    logger.info(f"Using original topic for research: {original_topic}")
+            logger.info(f"Deep Research request detected for query: {last_message.content}")
+            
+            # Import the deep research module
+            from api.research import deep_research
+            import time
+            
+            # Track if websocket is still connected
+            ws_connected = True
+            
+            def check_ws_cancelled():
+                """Check if WebSocket is disconnected"""
+                return not ws_connected or websocket.client_state.value != 1  # CONNECTED = 1
+            
+            # Define progress callback to stream status updates with timestamp
+            async def progress_callback(status: str):
+                if not check_ws_cancelled():
+                    try:
+                        # Add timestamp to thinking messages
+                        if status.startswith("<think>"):
+                            timestamp = int(time.time() * 1000)  # milliseconds
+                            status = status.replace("<think>", f'<think timestamp="{timestamp}">')
+                        await websocket.send_text(status)
+                    except Exception as e:
+                        logger.error(f"Error sending progress: {e}")
+                        nonlocal ws_connected
+                        ws_connected = False
+            
+            # Perform deep research
+            try:
+                result = await deep_research(
+                    query=last_message.content,
+                    rag_instance=request_rag,
+                    breadth=3,  # Number of queries per iteration
+                    depth=2,    # Number of research iterations
+                    provider=request.provider,
+                    model=request.model,
+                    language=request.language,
+                    on_progress=progress_callback,
+                    check_cancelled=check_ws_cancelled
+                )
+                
+                # Final report is already streamed via on_progress
+                # Just close the connection
+                if ws_connected:
+                    await websocket.close()
+                return
+                
+            except Exception as e:
+                logger.error(f"Error during deep research: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                if ws_connected:
+                    try:
+                        await websocket.send_text(f"\n\nError during deep research: {str(e)}")
+                        await websocket.close()
+                    except:
+                        pass
+                return
 
         # Get the query from the last message
         query = last_message.content

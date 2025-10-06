@@ -120,6 +120,45 @@ const ChatModal: React.FC<ChatModalProps> = ({
     };
   }, []);
 
+  // Thinking timeline types and state
+  interface ThinkingStep {
+    id: string;
+    content: string;
+    timestamp: number;
+    status: 'active' | 'completed' | 'error';
+    duration?: number;
+  }
+
+  const [thinkingSteps, setThinkingSteps] = useState<ThinkingStep[]>([]);
+  const [currentThinkingId, setCurrentThinkingId] = useState<string | null>(null);
+  const [nowTs, setNowTs] = useState<number>(Date.now());
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Tick timer when a thinking step is active to update live duration
+  useEffect(() => {
+    if (currentThinkingId) {
+      if (!timerRef.current) {
+        timerRef.current = setInterval(() => setNowTs(Date.now()), 1000);
+      }
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [currentThinkingId]);
+
+  const resetThinking = () => {
+    setThinkingSteps([]);
+    setCurrentThinkingId(null);
+  };
+
   const sendMessageWithoutUserMessage = async (context: ChatContext) => {
     setIsLoading(true);
     streamingMessageRef.current = '';
@@ -127,7 +166,8 @@ const ChatModal: React.FC<ChatModalProps> = ({
     try {
       const messagesForApi = context.messages.map(msg => ({
         role: msg.role as 'user' | 'assistant',
-        content: msg.content
+        // Strip <think> blocks before sending to backend
+        content: msg.content.replace(/<think[\s\S]*?<\/think>/g, '')
       }));
 
       const requestBody: ChatCompletionRequest = {
@@ -150,9 +190,49 @@ const ChatModal: React.FC<ChatModalProps> = ({
       webSocketRef.current = createChatWebSocket(
         requestBody,
         (message: string) => {
-          fullResponse += message;
-          streamingMessageRef.current = fullResponse;
-          setCurrentContext(prev => prev ? { ...prev } : null);
+          // Extract ALL <think ...>...</think> blocks and remove them from the content
+          const thinkRegex = /<think[^>]*>([\s\S]*?)<\/think>/g;
+          let residual = message as string;
+          let match: RegExpExecArray | null;
+          const nowMs = Date.now();
+          while ((match = thinkRegex.exec(message as string)) !== null) {
+            const tag = match[0];
+            const inner = match[1];
+            // Try to grab timestamp attribute
+            const tsMatch = tag.match(/timestamp=\"(\d+)\"/);
+            const ts = tsMatch ? parseInt(tsMatch[1]) : nowMs;
+            const stepId = `step-${ts}`;
+
+            // Complete previous active step
+            if (currentThinkingId) {
+              setThinkingSteps(prev => prev.map(step =>
+                step.id === currentThinkingId
+                  ? { ...step, status: 'completed', duration: ts - step.timestamp }
+                  : step
+              ));
+            }
+
+            // Add new step as active
+            const newStep: ThinkingStep = {
+              id: stepId,
+              content: inner,
+              timestamp: ts,
+              status: 'active'
+            };
+            setThinkingSteps(prev => [...prev, newStep]);
+            setCurrentThinkingId(stepId);
+
+            // Remove this think block from residual content
+            residual = residual.replace(tag, '');
+          }
+
+          // Append residual (non-think content)
+          if (residual && residual.trim().length > 0) {
+            residual = residual.replace(thinkRegex, '');
+            fullResponse += residual;
+            streamingMessageRef.current = fullResponse;
+            setCurrentContext(prev => prev ? { ...prev } : null);
+          }
         },
         (error: Event) => {
           console.error('WebSocket error:', error);
@@ -161,9 +241,22 @@ const ChatModal: React.FC<ChatModalProps> = ({
           setIsLoading(false);
         },
         () => {
+          // Close out any active thinking step
+          if (currentThinkingId) {
+            const now = Date.now();
+            setThinkingSteps(prev => prev.map(step =>
+              step.id === currentThinkingId
+                ? { ...step, status: 'completed', duration: now - step.timestamp }
+                : step
+            ));
+            setCurrentThinkingId(null);
+          }
+
           const assistantMessage: ChatMessage = {
             role: 'assistant',
             content: fullResponse,
+// @ts-expect-error - extend message with thinkings for persistence
+            thinkings: thinkingSteps,
             timestamp: Date.now()
           };
           
@@ -229,7 +322,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
 
       const messagesForApi = trimmedMessages.map(msg => ({
         role: msg.role as 'user' | 'assistant',
-        content: msg.content
+        content: msg.content.replace(/<think[\s\S]*?<\/think>/g, '')
       }));
 
       const requestBody: ChatCompletionRequest = {
@@ -248,13 +341,55 @@ const ChatModal: React.FC<ChatModalProps> = ({
       closeWebSocket(webSocketRef.current);
 
       let fullResponse = '';
+      // Reset timeline for a new streaming session
+      resetThinking();
 
       webSocketRef.current = createChatWebSocket(
         requestBody,
         (message: string) => {
-          fullResponse += message;
-          streamingMessageRef.current = fullResponse;
-          setCurrentContext(prev => prev ? { ...prev } : null);
+          // Extract ALL <think ...>...</think> blocks and remove them from the content
+          const thinkRegex = /<think[^>]*>([\s\S]*?)<\/think>/g;
+          let residual = message as string;
+          let match: RegExpExecArray | null;
+          const nowMs = Date.now();
+          while ((match = thinkRegex.exec(message as string)) !== null) {
+            const tag = match[0];
+            const inner = match[1];
+            // Try to grab timestamp attribute
+            const tsMatch = tag.match(/timestamp=\"(\d+)\"/);
+            const ts = tsMatch ? parseInt(tsMatch[1]) : nowMs;
+            const stepId = `step-${ts}`;
+
+            // Complete previous active step
+            if (currentThinkingId) {
+              setThinkingSteps(prev => prev.map(step =>
+                step.id === currentThinkingId
+                  ? { ...step, status: 'completed', duration: ts - step.timestamp }
+                  : step
+              ));
+            }
+
+            // Add new step as active
+            const newStep: ThinkingStep = {
+              id: stepId,
+              content: inner,
+              timestamp: ts,
+              status: 'active'
+            };
+            setThinkingSteps(prev => [...prev, newStep]);
+            setCurrentThinkingId(stepId);
+
+            // Remove this think block from residual content
+            residual = residual.replace(tag, '');
+          }
+
+          // Append residual (non-think content)
+          if (residual && residual.trim().length > 0) {
+            residual = residual.replace(thinkRegex, '');
+            fullResponse += residual;
+            streamingMessageRef.current = fullResponse;
+            setCurrentContext(prev => prev ? { ...prev } : null);
+          }
         },
         (error: Event) => {
           console.error('WebSocket error:', error);
@@ -263,9 +398,22 @@ const ChatModal: React.FC<ChatModalProps> = ({
           setIsLoading(false);
         },
         () => {
+          // Close out any active thinking step
+          if (currentThinkingId) {
+            const now = Date.now();
+            setThinkingSteps(prev => prev.map(step =>
+              step.id === currentThinkingId
+                ? { ...step, status: 'completed', duration: now - step.timestamp }
+                : step
+            ));
+            setCurrentThinkingId(null);
+          }
+
           const assistantMessage: ChatMessage = {
             role: 'assistant',
             content: fullResponse,
+// @ts-expect-error - extend message with thinkings for persistence
+            thinkings: thinkingSteps,
             timestamp: Date.now()
           };
           
@@ -373,7 +521,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
         )}
 
         {/* Chat Area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden relative">
           {/* Messages */}
           <div className="flex-1 overflow-y-auto pb-48">
             <div className="max-w-4xl mx-auto px-4 py-6">
@@ -389,26 +537,64 @@ const ChatModal: React.FC<ChatModalProps> = ({
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {currentContext.messages.map((message, index) => (
-                    <div
-                      key={index}
-                      className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div
-                        className={`max-w-3xl rounded-2xl px-6 py-4 ${
-                          message.role === 'user'
-                            ? 'bg-[var(--accent-primary)] text-white'
-                            : 'bg-[var(--card-bg)] border border-[var(--border-color)] text-[var(--foreground)]'
-                        }`}
-                      >
-                        {message.role === 'assistant' ? (
-                          <Markdown content={message.content} />
-                        ) : (
-                          <p className="whitespace-pre-wrap">{message.content.replace('[DEEP RESEARCH]', '').trim()}</p>
+                  {currentContext.messages.map((message, index) => {
+                    // Inline timeline for stored assistant messages
+const storedThinkings: ThinkingStep[] | undefined = (message as unknown as { thinkings?: ThinkingStep[] }).thinkings;
+                    return (
+                      <div key={index}>
+                        {/* If this is an assistant message with stored thinkings, render timeline above it */}
+                        {message.role === 'assistant' && storedThinkings && storedThinkings.length > 0 && (
+                          <div className="mb-2 space-y-2">
+{storedThinkings.map((step) => (
+                              <div key={step.id} className={`flex items-center gap-2 text-xs ${step.status === 'completed' ? 'text-gray-500' : 'text-purple-700'}`}>
+                                <div className={`w-2 h-2 rounded-full ${step.status === 'completed' ? 'bg-gray-400' : 'bg-purple-500 animate-pulse'}`}></div>
+                                <div className="flex-1">
+                                  <span className={`${step.status === 'completed' ? 'opacity-70' : ''}`}>{step.content}</span>
+                                </div>
+                                {step.status === 'completed' && step.duration != null ? (
+                                  <span className="text-[10px] text-gray-500">⏱ {(step.duration/1000).toFixed(1)}s</span>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
                         )}
+                        <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          <div
+                            className={`max-w-3xl rounded-2xl px-6 py-4 ${
+                              message.role === 'user'
+                                ? 'bg-[var(--accent-primary)] text-white'
+                                : 'bg-[var(--card-bg)] border border-[var(--border-color)] text-[var(--foreground)]'
+                            }`}
+                          >
+                            {message.role === 'assistant' ? (
+                              <Markdown content={message.content.replace(/<think[\s\S]*?<\/think>/g, '')} />
+                            ) : (
+                              <p className="whitespace-pre-wrap">{message.content.replace('[DEEP RESEARCH]', '').trim()}</p>
+                            )}
+                          </div>
+                        </div>
                       </div>
+                    );
+                  })}
+
+                  {/* Inline timeline for current streaming deep research (placed above streaming assistant bubble) */}
+                  {thinkingSteps.length > 0 && (
+                    <div className="mb-2 space-y-2">
+                      {thinkingSteps.map((step) => {
+                        const isActive = currentThinkingId === step.id && step.status !== 'completed';
+                        const liveDuration = isActive ? (nowTs - step.timestamp) : step.duration ?? 0;
+                        return (
+                          <div key={step.id} className={`flex items-center gap-2 text-xs ${isActive ? 'text-purple-700' : 'text-gray-500'}`}>
+                            <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-purple-500 animate-pulse' : 'bg-gray-400'}`}></div>
+                            <div className="flex-1">
+                              <span className={`${isActive ? '' : 'opacity-70'}`}>{step.content}</span>
+                            </div>
+<span className={`text-[10px] ${isActive ? 'text-purple-600' : 'text-gray-500'}`}>{isActive ? `⏱ ${(liveDuration/1000).toFixed(1)}s` : (step.duration != null ? `⏱ ${(step.duration/1000).toFixed(1)}s` : '')}</span>
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
+                  )}
                   
                   {/* Streaming message */}
                   {isLoading && streamingMessageRef.current && (
@@ -418,6 +604,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
                       </div>
                     </div>
                   )}
+
                   
                   {/* Loading indicator */}
                   {isLoading && !streamingMessageRef.current && (
