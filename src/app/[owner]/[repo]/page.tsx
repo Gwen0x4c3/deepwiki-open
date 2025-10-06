@@ -4,6 +4,7 @@
 import Ask from '@/components/Ask';
 import Markdown from '@/components/Markdown';
 import ModelSelectionModal from '@/components/ModelSelectionModal';
+import TableOfContents from '@/components/TableOfContents';
 import ThemeToggle from '@/components/theme-toggle';
 import WikiTreeView from '@/components/WikiTreeView';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -1917,11 +1918,61 @@ IMPORTANT:
       <style>{wikiStyles}</style>
 
       <header className="max-w-[90%] xl:max-w-[1400px] mx-auto mb-8 h-fit w-full">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="text-[var(--accent-primary)] hover:text-[var(--highlight)] flex items-center gap-1.5 transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5">
-              <FaHome /> {messages.repoPage?.home || 'Home'}
-            </Link>
+        <div className="bg-[var(--card-bg)] rounded-lg shadow-sm border border-[var(--border-color)] p-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-center gap-4 flex-1">
+              <Link href="/" className="text-[var(--accent-primary)] hover:text-[var(--highlight)] flex items-center gap-2 transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)] pb-0.5">
+                <FaHome className="text-lg" /> 
+                <span className="font-serif font-medium">{messages.repoPage?.home || 'Home'}</span>
+              </Link>
+              {wikiStructure && (
+                <>
+                  <span className="text-[var(--muted)]">/</span>
+                  <div className="flex items-center gap-2 text-sm">
+                    {effectiveRepoInfo.type === 'local' ? (
+                      <div className="flex items-center text-[var(--muted)]">
+                        <FaFolder className="mr-2" />
+                        <span className="truncate max-w-[200px] md:max-w-[400px]" title={effectiveRepoInfo.localPath || undefined}>
+                          {effectiveRepoInfo.localPath}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        {effectiveRepoInfo.type === 'github' ? (
+                          <FaGithub className="text-[var(--muted)]" />
+                        ) : effectiveRepoInfo.type === 'gitlab' ? (
+                          <FaGitlab className="text-[var(--muted)]" />
+                        ) : (
+                          <FaBitbucket className="text-[var(--muted)]" />
+                        )}
+                        <a
+                          href={effectiveRepoInfo.repoUrl ?? ''}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[var(--foreground)] hover:text-[var(--accent-primary)] transition-colors font-medium"
+                        >
+                          {effectiveRepoInfo.owner}/{effectiveRepoInfo.repo}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              {wikiStructure && (
+                <div className="flex items-center text-xs text-[var(--muted)]">
+                  <span className={`px-3 py-1.5 rounded-full font-medium ${isComprehensiveView
+                    ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30'
+                    : 'bg-[var(--background)] text-[var(--foreground)] border border-[var(--border-color)]'}`}>
+                    {isComprehensiveView
+                      ? (messages.form?.comprehensive || 'Comprehensive')
+                      : (messages.form?.concise || 'Concise')}
+                  </span>
+                </div>
+              )}
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </header>
@@ -2014,58 +2065,21 @@ IMPORTANT:
             </div>
           </div>
         ) : wikiStructure ? (
-          <div className="h-full overflow-y-auto flex flex-col lg:flex-row gap-4 w-full overflow-hidden bg-[var(--card-bg)] rounded-lg shadow-custom card-japanese">
-            {/* Wiki Navigation */}
-            <div className="h-full w-full lg:w-[280px] xl:w-[320px] flex-shrink-0 bg-[var(--background)]/50 rounded-lg rounded-r-none p-5 border-b lg:border-b-0 lg:border-r border-[var(--border-color)] overflow-y-auto">
-              <h3 className="text-lg font-bold text-[var(--foreground)] mb-3 font-serif">{wikiStructure.title}</h3>
+          <div className="h-full overflow-y-auto flex flex-col lg:flex-row gap-6 w-full overflow-hidden">
+            {/* Wiki Navigation - Left Sidebar */}
+            <div className="h-full w-full lg:w-[280px] xl:w-[300px] flex-shrink-0 bg-[var(--card-bg)] rounded-lg p-5 border border-[var(--border-color)] overflow-y-auto shadow-sm">
+              <h3 className="text-lg font-bold text-[var(--foreground)] mb-3 font-serif flex items-center">
+                <FaBookOpen className="mr-2 text-[var(--accent-primary)]" />
+                {wikiStructure.title}
+              </h3>
               <p className="text-[var(--muted)] text-sm mb-5 leading-relaxed">{wikiStructure.description}</p>
-
-              {/* Display repository info */}
-              <div className="text-xs text-[var(--muted)] mb-5 flex items-center">
-                {effectiveRepoInfo.type === 'local' ? (
-                  <div className="flex items-center">
-                    <FaFolder className="mr-2" />
-                    <span className="break-all">{effectiveRepoInfo.localPath}</span>
-                  </div>
-                ) : (
-                  <>
-                    {effectiveRepoInfo.type === 'github' ? (
-                      <FaGithub className="mr-2" />
-                    ) : effectiveRepoInfo.type === 'gitlab' ? (
-                      <FaGitlab className="mr-2" />
-                    ) : (
-                      <FaBitbucket className="mr-2" />
-                    )}
-                    <a
-                      href={effectiveRepoInfo.repoUrl ?? ''}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:text-[var(--accent-primary)] transition-colors border-b border-[var(--border-color)] hover:border-[var(--accent-primary)]"
-                    >
-                      {effectiveRepoInfo.owner}/{effectiveRepoInfo.repo}
-                    </a>
-                  </>
-                )}
-              </div>
-
-              {/* Wiki Type Indicator */}
-              <div className="mb-3 flex items-center text-xs text-[var(--muted)]">
-                <span className="mr-2">Wiki Type:</span>
-                <span className={`px-2 py-0.5 rounded-full ${isComprehensiveView
-                  ? 'bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] border border-[var(--accent-primary)]/30'
-                  : 'bg-[var(--background)] text-[var(--foreground)] border border-[var(--border-color)]'}`}>
-                  {isComprehensiveView
-                    ? (messages.form?.comprehensive || 'Comprehensive')
-                    : (messages.form?.concise || 'Concise')}
-                </span>
-              </div>
 
               {/* Refresh Wiki button */}
               <div className="mb-5">
                 <button
                   onClick={() => setIsModelSelectionModalOpen(true)}
                   disabled={isLoading}
-                  className="flex items-center w-full text-xs px-3 py-2 bg-[var(--background)] text-[var(--foreground)] rounded-md hover:bg-[var(--background)]/80 disabled:opacity-50 disabled:cursor-not-allowed border border-[var(--border-color)] transition-colors hover:cursor-pointer"
+                  className="flex items-center w-full justify-center text-xs px-3 py-2.5 bg-[var(--accent-primary)] text-white rounded-md hover:bg-[var(--accent-primary)]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md font-medium"
                 >
                   <FaSync className={`mr-2 ${isLoading ? 'animate-spin' : ''}`} />
                   {messages.repoPage?.refreshWiki || 'Refresh Wiki'}
@@ -2074,7 +2088,7 @@ IMPORTANT:
 
               {/* Export buttons */}
               {Object.keys(generatedPages).length > 0 && (
-                <div className="mb-5">
+                <div className="mb-5 pb-5 border-b border-[var(--border-color)]">
                   <h4 className="text-sm font-semibold text-[var(--foreground)] mb-3 font-serif">
                     {messages.repoPage?.exportWiki || 'Export Wiki'}
                   </h4>
@@ -2082,7 +2096,7 @@ IMPORTANT:
                     <button
                       onClick={() => exportWiki('markdown')}
                       disabled={isExporting}
-                      className="btn-japanese flex items-center text-xs px-3 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex items-center justify-center text-xs px-3 py-2 bg-[var(--background)] text-[var(--foreground)] rounded-md hover:bg-[var(--background)]/80 disabled:opacity-50 disabled:cursor-not-allowed border border-[var(--border-color)] transition-colors"
                     >
                       <FaDownload className="mr-2" />
                       {messages.repoPage?.exportAsMarkdown || 'Export as Markdown'}
@@ -2090,7 +2104,7 @@ IMPORTANT:
                     <button
                       onClick={() => exportWiki('json')}
                       disabled={isExporting}
-                      className="flex items-center text-xs px-3 py-2 bg-[var(--background)] text-[var(--foreground)] rounded-md hover:bg-[var(--background)]/80 disabled:opacity-50 disabled:cursor-not-allowed border border-[var(--border-color)] transition-colors"
+                      className="flex items-center justify-center text-xs px-3 py-2 bg-[var(--background)] text-[var(--foreground)] rounded-md hover:bg-[var(--background)]/80 disabled:opacity-50 disabled:cursor-not-allowed border border-[var(--border-color)] transition-colors"
                     >
                       <FaFileExport className="mr-2" />
                       {messages.repoPage?.exportAsJson || 'Export as JSON'}
@@ -2104,7 +2118,7 @@ IMPORTANT:
                 </div>
               )}
 
-              <h4 className="text-md font-semibold text-[var(--foreground)] mb-3 font-serif">
+              <h4 className="text-sm font-semibold text-[var(--foreground)] mb-3 font-serif">
                 {messages.repoPage?.pages || 'Pages'}
               </h4>
               <WikiTreeView
@@ -2115,68 +2129,66 @@ IMPORTANT:
               />
             </div>
 
-            {/* Wiki Content */}
-            <div id="wiki-content" className="w-full flex-grow p-6 lg:p-8 overflow-y-auto">
-              {currentPageId && generatedPages[currentPageId] ? (
-                <div className="max-w-[900px] xl:max-w-[1000px] mx-auto">
-                  <h3 className="text-xl font-bold text-[var(--foreground)] mb-4 break-words font-serif">
-                    {generatedPages[currentPageId].title}
-                  </h3>
-
-
-
-                  <div className="prose prose-sm md:prose-base lg:prose-lg max-w-none">
-                    <Markdown
-                      content={generatedPages[currentPageId].content}
-                    />
-                  </div>
-
-                  {generatedPages[currentPageId].relatedPages.length > 0 && (
-                    <div className="mt-8 pt-4 border-t border-[var(--border-color)]">
-                      <h4 className="text-sm font-semibold text-[var(--muted)] mb-3">
-                        {messages.repoPage?.relatedPages || 'Related Pages:'}
-                      </h4>
-                      <div className="flex flex-wrap gap-2">
-                        {generatedPages[currentPageId].relatedPages.map(relatedId => {
-                          const relatedPage = wikiStructure.pages.find(p => p.id === relatedId);
-                          return relatedPage ? (
-                            <button
-                              key={relatedId}
-                              className="bg-[var(--accent-primary)]/10 hover:bg-[var(--accent-primary)]/20 text-xs text-[var(--accent-primary)] px-3 py-1.5 rounded-md transition-colors truncate max-w-full border border-[var(--accent-primary)]/20"
-                              onClick={() => handlePageSelect(relatedId)}
-                            >
-                              {relatedPage.title}
-                            </button>
-                          ) : null;
-                        })}
-                      </div>
+            {/* Wiki Content - Center Area */}
+            <div className="flex-1 flex flex-col xl:flex-row gap-6 min-w-0 overflow-hidden">
+              <div id="wiki-content" className="flex-1 bg-[var(--card-bg)] rounded-lg p-6 lg:p-8 border border-[var(--border-color)] overflow-y-auto shadow-sm">
+                {currentPageId && generatedPages[currentPageId] ? (
+                  <div className="max-w-none">
+                    <div className="mb-6 pb-4 border-b border-[var(--border-color)]">
+                      <h3 className="text-2xl lg:text-3xl font-bold text-[var(--foreground)] break-words font-serif">
+                        {generatedPages[currentPageId].title}
+                      </h3>
                     </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center p-8 text-[var(--muted)] h-full">
-                  <div className="relative mb-4">
-                    <div className="absolute -inset-2 bg-[var(--accent-primary)]/5 rounded-full blur-md"></div>
-                    <FaBookOpen className="text-4xl relative z-10" />
+
+                    <div className="prose prose-sm md:prose-base lg:prose-lg max-w-none">
+                      <Markdown
+                        content={generatedPages[currentPageId].content}
+                      />
+                    </div>
+
+                    {generatedPages[currentPageId].relatedPages.length > 0 && (
+                      <div className="mt-8 pt-6 border-t border-[var(--border-color)]">
+                        <h4 className="text-sm font-semibold text-[var(--foreground)] mb-3 font-serif">
+                          {messages.repoPage?.relatedPages || 'Related Pages'}
+                        </h4>
+                        <div className="flex flex-wrap gap-2">
+                          {generatedPages[currentPageId].relatedPages.map(relatedId => {
+                            const relatedPage = wikiStructure.pages.find(p => p.id === relatedId);
+                            return relatedPage ? (
+                              <button
+                                key={relatedId}
+                                className="bg-[var(--accent-primary)]/10 hover:bg-[var(--accent-primary)]/20 text-xs text-[var(--accent-primary)] px-3 py-2 rounded-md transition-all truncate max-w-full border border-[var(--accent-primary)]/20 font-medium hover:shadow-sm"
+                                onClick={() => handlePageSelect(relatedId)}
+                              >
+                                {relatedPage.title}
+                              </button>
+                            ) : null;
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <p className="font-serif">
-                    {messages.repoPage?.selectPagePrompt || 'Select a page from the navigation to view its content'}
-                  </p>
-                </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-12 text-[var(--muted)] h-full">
+                    <div className="relative mb-6">
+                      <div className="absolute -inset-3 bg-[var(--accent-primary)]/5 rounded-full blur-lg"></div>
+                      <FaBookOpen className="text-5xl relative z-10 text-[var(--accent-primary)]/70" />
+                    </div>
+                    <p className="font-serif text-lg text-center">
+                      {messages.repoPage?.selectPagePrompt || 'Select a page from the navigation to view its content'}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Table of Contents - Right Sidebar */}
+              {currentPageId && generatedPages[currentPageId] && (
+                <TableOfContents content={generatedPages[currentPageId].content} />
               )}
             </div>
           </div>
         ) : null}
       </main>
-
-      <footer className="max-w-[90%] xl:max-w-[1400px] mx-auto mt-8 flex flex-col gap-4 w-full">
-        <div className="flex justify-between items-center gap-4 text-center text-[var(--muted)] text-sm h-fit w-full bg-[var(--card-bg)] rounded-lg p-3 shadow-sm border border-[var(--border-color)]">
-          <p className="flex-1 font-serif">
-            {messages.footer?.copyright || 'DeepWiki - Generate Wiki from GitHub/Gitlab/Bitbucket repositories'}
-          </p>
-          <ThemeToggle />
-        </div>
-      </footer>
 
       {/* Floating Chat Button */}
       {!isLoading && wikiStructure && (
