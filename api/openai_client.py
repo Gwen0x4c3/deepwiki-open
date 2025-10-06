@@ -412,7 +412,8 @@ class OpenAIClient(ModelClient):
         """
         kwargs is the combined input and model_kwargs.  Support streaming call.
         """
-        log.info(f"api_kwargs: {api_kwargs}")
+        # trim the api kwargs for loggingthe length of logging kwargs
+        log.info(f"api_kwargs: {str(api_kwargs)[:300]}")
         self._api_kwargs = api_kwargs
         if model_type == ModelType.EMBEDDER:
             return self.sync_client.embeddings.create(**api_kwargs)
