@@ -3,6 +3,7 @@
 
 import Markdown from '@/components/Markdown';
 import ChatInput from '@/components/ChatInput';
+import ChatModal from '@/components/ChatModal';
 import ModelSelectionModal from '@/components/ModelSelectionModal';
 import TableOfContents from '@/components/TableOfContents';
 import ThemeToggle from '@/components/theme-toggle';
@@ -271,6 +272,9 @@ export default function RepoWikiPage() {
   // Chat context state for wiki page
   const [chatContexts, setChatContexts] = useState<ChatContext[]>([]);
   const [selectedContextId, setSelectedContextId] = useState<string | null>(null);
+  const [isChatModalOpen, setIsChatModalOpen] = useState(false);
+  const [chatInitialQuestion, setChatInitialQuestion] = useState<string | undefined>();
+  const [chatInitialContextId, setChatInitialContextId] = useState<string | null>(null);
   
   // Load chat contexts for this repo
   useEffect(() => {
@@ -2189,27 +2193,10 @@ IMPORTANT:
       {!isLoading && wikiStructure && (
         <ChatInput
           onSubmit={(question) => {
-            // Navigate to chat page with the question or context
-            const chatUrl = new URL(`/${owner}/${repo}/chat`, window.location.origin);
-            
-            if (selectedContextId) {
-              // Load existing context
-              chatUrl.searchParams.set('context_id', selectedContextId);
-            } else {
-              // New conversation with question
-              chatUrl.searchParams.set('q', encodeURIComponent(question));
-            }
-            
-            if (token) chatUrl.searchParams.set('token', token);
-            if (repoUrl) chatUrl.searchParams.set('repo_url', encodeURIComponent(repoUrl));
-            chatUrl.searchParams.set('type', repoType);
-            chatUrl.searchParams.set('provider', selectedProviderState);
-            chatUrl.searchParams.set('model', selectedModelState);
-            if (isCustomSelectedModelState) {
-              chatUrl.searchParams.set('is_custom_model', 'true');
-              chatUrl.searchParams.set('custom_model', customSelectedModelState);
-            }
-            router.push(chatUrl.toString());
+            // Open chat modal with question and/or context
+            setChatInitialQuestion(question);
+            setChatInitialContextId(selectedContextId);
+            setIsChatModalOpen(true);
           }}
           isLoading={false}
           placeholder={selectedContextId ? "Continue conversation..." : "Ask a question about this codebase..."}
@@ -2227,8 +2214,40 @@ IMPORTANT:
           contexts={chatContexts}
           selectedContextId={selectedContextId}
           onContextSelect={setSelectedContextId}
+          onViewContext={(contextId) => {
+            // Open chat modal with selected context
+            setChatInitialQuestion(undefined);
+            setChatInitialContextId(contextId);
+            setIsChatModalOpen(true);
+          }}
         />
       )}
+      
+      {/* Chat Modal */}
+      <ChatModal
+        isOpen={isChatModalOpen}
+        onClose={() => {
+          setIsChatModalOpen(false);
+          setChatInitialQuestion(undefined);
+          setChatInitialContextId(null);
+          // Reload contexts after chat
+          const contexts = getAllChatContexts(owner, repo);
+          setChatContexts(contexts);
+        }}
+        repoInfo={effectiveRepoInfo}
+        initialQuestion={chatInitialQuestion}
+        initialContextId={chatInitialContextId}
+        provider={selectedProviderState}
+        model={selectedModelState}
+        isCustomModel={isCustomSelectedModelState}
+        customModel={customSelectedModelState}
+        onProviderChange={setSelectedProviderState}
+        onModelChange={setSelectedModelState}
+        onIsCustomModelChange={setIsCustomSelectedModelState}
+        onCustomModelChange={setCustomSelectedModelState}
+        deepResearch={deepResearch}
+        onDeepResearchChange={setDeepResearch}
+      />
 
       <ModelSelectionModal
         isOpen={isModelSelectionModalOpen}
