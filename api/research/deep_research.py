@@ -221,8 +221,8 @@ async def deep_research(
     
     logger.info("Final report generated")
     
-    if on_progress:
-        await on_progress(f"<think>Research complete!</think>")
+    # if on_progress:
+    #     await on_progress(f"<think>Research complete!</think>")
     
     return ResearchResult(
         learnings=all_learnings,

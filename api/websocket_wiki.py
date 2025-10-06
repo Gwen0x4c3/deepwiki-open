@@ -44,6 +44,7 @@ class ChatCompletionRequest(BaseModel):
     model: Optional[str] = Field(None, description="Model name for the specified provider")
 
     language: Optional[str] = Field("en", description="Language for content generation (e.g., 'en', 'ja', 'zh', 'es', 'kr', 'vi')")
+    research_level: Optional[str] = Field(None, description="Deep research level: lite | medium | heavy")
     excluded_dirs: Optional[str] = Field(None, description="Comma-separated list of directories to exclude from processing")
     excluded_files: Optional[str] = Field(None, description="Comma-separated list of file patterns to exclude from processing")
     included_dirs: Optional[str] = Field(None, description="Comma-separated list of directories to include exclusively")
@@ -166,6 +167,15 @@ async def handle_websocket_chat(websocket: WebSocket):
             from api.research import deep_research
             import time
             
+            # Map research_level to breadth/depth
+            level = (request.research_level or 'medium').lower()
+            if level == 'lite':
+                level_breadth, level_depth = 2, 1
+            elif level == 'heavy':
+                level_breadth, level_depth = 4, 3
+            else:
+                level_breadth, level_depth = 3, 2
+            
             # Track if websocket is still connected
             ws_connected = True
             
@@ -192,8 +202,8 @@ async def handle_websocket_chat(websocket: WebSocket):
                 result = await deep_research(
                     query=last_message.content,
                     rag_instance=request_rag,
-                    breadth=3,  # Number of queries per iteration
-                    depth=2,    # Number of research iterations
+                    breadth=level_breadth,
+                    depth=level_depth,
                     provider=request.provider,
                     model=request.model,
                     language=request.language,

@@ -38,6 +38,8 @@ interface ChatModalProps {
   onDeepResearchChange: (enabled: boolean) => void;
 }
 
+type ResearchLevel = 'lite' | 'medium' | 'heavy';
+
 const ChatModal: React.FC<ChatModalProps> = ({
   isOpen,
   onClose,
@@ -60,6 +62,7 @@ const ChatModal: React.FC<ChatModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [maxHistoryMessages, setMaxHistoryMessages] = useState(10);
+  const [researchLevel, setResearchLevel] = useState<ResearchLevel>('medium');
   
   const webSocketRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -176,7 +179,8 @@ const ChatModal: React.FC<ChatModalProps> = ({
         messages: messagesForApi,
         provider: provider,
         model: isCustomModel ? customModel : model,
-        language: 'en'
+        language: 'en',
+        research_level: researchLevel
       };
 
       if (repoInfo.token) {
@@ -241,16 +245,12 @@ const ChatModal: React.FC<ChatModalProps> = ({
           setIsLoading(false);
         },
         () => {
-          // Close out any active thinking step
-          if (currentThinkingId) {
-            const now = Date.now();
-            setThinkingSteps(prev => prev.map(step =>
-              step.id === currentThinkingId
-                ? { ...step, status: 'completed', duration: now - step.timestamp }
-                : step
-            ));
-            setCurrentThinkingId(null);
-          }
+          // Close out all active/incomplete thinking steps as a safeguard
+          const now = Date.now();
+          setThinkingSteps(prev => prev.map(step =>
+            step.status !== 'completed' ? { ...step, status: 'completed', duration: (step.duration ?? (now - step.timestamp)) } : step
+          ));
+          setCurrentThinkingId(null);
 
           const assistantMessage: ChatMessage = {
             role: 'assistant',
@@ -331,7 +331,8 @@ const ChatModal: React.FC<ChatModalProps> = ({
         messages: messagesForApi,
         provider: provider,
         model: isCustomModel ? customModel : model,
-        language: 'en'
+        language: 'en',
+        research_level: researchLevel
       };
 
       if (repoInfo.token) {
@@ -398,16 +399,12 @@ const ChatModal: React.FC<ChatModalProps> = ({
           setIsLoading(false);
         },
         () => {
-          // Close out any active thinking step
-          if (currentThinkingId) {
-            const now = Date.now();
-            setThinkingSteps(prev => prev.map(step =>
-              step.id === currentThinkingId
-                ? { ...step, status: 'completed', duration: now - step.timestamp }
-                : step
-            ));
-            setCurrentThinkingId(null);
-          }
+          // Close out all active/incomplete thinking steps as a safeguard
+          const now = Date.now();
+          setThinkingSteps(prev => prev.map(step =>
+            step.status !== 'completed' ? { ...step, status: 'completed', duration: (step.duration ?? (now - step.timestamp)) } : step
+          ));
+          setCurrentThinkingId(null);
 
           const assistantMessage: ChatMessage = {
             role: 'assistant',
@@ -641,6 +638,8 @@ const storedThinkings: ThinkingStep[] | undefined = (message as unknown as { thi
             onCustomModelChange={onCustomModelChange}
             deepResearch={deepResearch}
             onDeepResearchChange={onDeepResearchChange}
+            researchLevel={researchLevel}
+            onResearchLevelChange={setResearchLevel}
             maxHistoryMessages={maxHistoryMessages}
             onMaxHistoryMessagesChange={setMaxHistoryMessages}
             showHistoryConfig={true}
