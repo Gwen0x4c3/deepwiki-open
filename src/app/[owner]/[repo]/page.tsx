@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 'use client';
 
-import Ask from '@/components/Ask';
 import Markdown from '@/components/Markdown';
+import ChatInput from '@/components/ChatInput';
 import ModelSelectionModal from '@/components/ModelSelectionModal';
 import TableOfContents from '@/components/TableOfContents';
 import ThemeToggle from '@/components/theme-toggle';
@@ -12,7 +12,8 @@ import { RepoInfo } from '@/types/repoinfo';
 import getRepoUrl from '@/utils/getRepoUrl';
 import { extractUrlDomain, extractUrlPath } from '@/utils/urlDecoder';
 import Link from 'next/link';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
+import { getAllChatContexts, ChatContext, loadChatContext } from '@/utils/chatContext';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FaBitbucket, FaBookOpen, FaComments, FaDownload, FaExclamationTriangle, FaFileExport, FaFolder, FaGithub, FaGitlab, FaHome, FaSync, FaTimes } from 'react-icons/fa';
 // Define the WikiSection and WikiStructure types directly in this file
@@ -179,6 +180,7 @@ export default function RepoWikiPage() {
   // Get route parameters and search params
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   // Extract owner and repo from route params
   const owner = params.owner as string;
@@ -263,9 +265,18 @@ export default function RepoWikiPage() {
   // Create a flag to ensure the effect only runs once
   const effectRan = React.useRef(false);
 
-  // State for Ask modal
-  const [isAskModalOpen, setIsAskModalOpen] = useState(false);
-  const askComponentRef = useRef<{ clearConversation: () => void } | null>(null);
+  // Deep research state for chat input
+  const [deepResearch, setDeepResearch] = useState(false);
+  
+  // Chat context state for wiki page
+  const [chatContexts, setChatContexts] = useState<ChatContext[]>([]);
+  const [selectedContextId, setSelectedContextId] = useState<string | null>(null);
+  
+  // Load chat contexts for this repo
+  useEffect(() => {
+    const contexts = getAllChatContexts(owner, repo);
+    setChatContexts(contexts);
+  }, [owner, repo]);
 
   // Authentication state
   const [authRequired, setAuthRequired] = useState<boolean>(false);
@@ -320,23 +331,6 @@ export default function RepoWikiPage() {
     }
   }, [currentPageId]);
 
-  // close the modal when escape is pressed
-  useEffect(() => {
-    const handleEsc = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsAskModalOpen(false);
-      }
-    };
-
-    if (isAskModalOpen) {
-      window.addEventListener('keydown', handleEsc);
-    }
-
-    // Cleanup on unmount or when modal closes
-    return () => {
-      window.removeEventListener('keydown', handleEsc);
-    };
-  }, [isAskModalOpen]);
 
   // Fetch authentication status on component mount
   useEffect(() => {
@@ -1903,7 +1897,8 @@ IMPORTANT:
     };
 
     saveCache();
-  }, [isLoading, error, wikiStructure, generatedPages, effectiveRepoInfo.owner, effectiveRepoInfo.repo, effectiveRepoInfo.type, effectiveRepoInfo.repoUrl, repoUrl, language, isComprehensiveView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, error, wikiStructure, generatedPages, effectiveRepoInfo, repoUrl, language, isComprehensiveView, selectedProviderState, selectedModelState]);
 
   const handlePageSelect = (pageId: string) => {
     if (currentPageId != pageId) {
@@ -2190,45 +2185,50 @@ IMPORTANT:
         ) : null}
       </main>
 
-      {/* Floating Chat Button */}
+      {/* Floating Chat Input */}
       {!isLoading && wikiStructure && (
-        <button
-          onClick={() => setIsAskModalOpen(true)}
-          className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-[var(--accent-primary)] text-white shadow-lg flex items-center justify-center hover:bg-[var(--accent-primary)]/90 transition-all z-50"
-          aria-label={messages.ask?.title || 'Ask about this repository'}
-        >
-          <FaComments className="text-xl" />
-        </button>
+        <ChatInput
+          onSubmit={(question) => {
+            // Navigate to chat page with the question or context
+            const chatUrl = new URL(`/${owner}/${repo}/chat`, window.location.origin);
+            
+            if (selectedContextId) {
+              // Load existing context
+              chatUrl.searchParams.set('context_id', selectedContextId);
+            } else {
+              // New conversation with question
+              chatUrl.searchParams.set('q', encodeURIComponent(question));
+            }
+            
+            if (token) chatUrl.searchParams.set('token', token);
+            if (repoUrl) chatUrl.searchParams.set('repo_url', encodeURIComponent(repoUrl));
+            chatUrl.searchParams.set('type', repoType);
+            chatUrl.searchParams.set('provider', selectedProviderState);
+            chatUrl.searchParams.set('model', selectedModelState);
+            if (isCustomSelectedModelState) {
+              chatUrl.searchParams.set('is_custom_model', 'true');
+              chatUrl.searchParams.set('custom_model', customSelectedModelState);
+            }
+            router.push(chatUrl.toString());
+          }}
+          isLoading={false}
+          placeholder={selectedContextId ? "Continue conversation..." : "Ask a question about this codebase..."}
+          provider={selectedProviderState}
+          model={selectedModelState}
+          isCustomModel={isCustomSelectedModelState}
+          customModel={customSelectedModelState}
+          onProviderChange={setSelectedProviderState}
+          onModelChange={setSelectedModelState}
+          onIsCustomModelChange={setIsCustomSelectedModelState}
+          onCustomModelChange={setCustomSelectedModelState}
+          deepResearch={deepResearch}
+          onDeepResearchChange={setDeepResearch}
+          showHistoryConfig={false}
+          contexts={chatContexts}
+          selectedContextId={selectedContextId}
+          onContextSelect={setSelectedContextId}
+        />
       )}
-
-      {/* Ask Modal - Always render but conditionally show/hide */}
-      <div className={`fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 transition-opacity duration-300 ${isAskModalOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-        <div className="bg-[var(--card-bg)] rounded-lg shadow-xl w-full max-w-3xl max-h-[80vh] flex flex-col">
-          <div className="flex items-center justify-end p-3 absolute top-0 right-0 z-10">
-            <button
-              onClick={() => {
-                // Just close the modal without clearing the conversation
-                setIsAskModalOpen(false);
-              }}
-              className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors bg-[var(--card-bg)]/80 rounded-full p-2"
-              aria-label="Close"
-            >
-              <FaTimes className="text-xl" />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            <Ask
-              repoInfo={effectiveRepoInfo}
-              provider={selectedProviderState}
-              model={selectedModelState}
-              isCustomModel={isCustomSelectedModelState}
-              customModel={customSelectedModelState}
-              language={language}
-              onRef={(ref) => (askComponentRef.current = ref)}
-            />
-          </div>
-        </div>
-      </div>
 
       <ModelSelectionModal
         isOpen={isModelSelectionModalOpen}

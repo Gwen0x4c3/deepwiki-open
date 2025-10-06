@@ -142,28 +142,40 @@ export default function ModelSelectionModal({
           {/* Modal header with close button */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)]">
             <h3 className="text-lg font-medium text-[var(--accent-primary)]">
-              <span className="text-[var(--accent-primary)]">{t.form?.modelSelection || 'Model Selection'}</span>
+              <span className="text-[var(--accent-primary)]">
+                {t.form?.modelSelection || "Model Selection"}
+              </span>
             </h3>
             <button
               type="button"
               onClick={onClose}
               className="text-[var(--muted)] hover:text-[var(--foreground)] focus:outline-none transition-colors"
             >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
 
           {/* Modal body */}
-          <div className="p-6">
+          <div className="px-6 py-2">
             {/* Wiki Type Selector */}
-            {
-              showWikiType && <WikiTypeSelector
-                    isComprehensiveView={localIsComprehensiveView}
-                    setIsComprehensiveView={setLocalIsComprehensiveView}
-                />
-            }
+            {showWikiType && (
+              <WikiTypeSelector
+                isComprehensiveView={localIsComprehensiveView}
+                setIsComprehensiveView={setLocalIsComprehensiveView}
+              />
+            )}
 
             {/* Divider */}
             <div className="my-4 border-t border-[var(--border-color)]/30"></div>
@@ -180,13 +192,29 @@ export default function ModelSelectionModal({
               setCustomModel={setLocalCustomModel}
               showFileFilters={showFileFilters}
               excludedDirs={localExcludedDirs}
-              setExcludedDirs={showFileFilters ? (value: string) => setLocalExcludedDirs(value) : undefined}
+              setExcludedDirs={
+                showFileFilters
+                  ? (value: string) => setLocalExcludedDirs(value)
+                  : undefined
+              }
               excludedFiles={localExcludedFiles}
-              setExcludedFiles={showFileFilters ? (value: string) => setLocalExcludedFiles(value) : undefined}
+              setExcludedFiles={
+                showFileFilters
+                  ? (value: string) => setLocalExcludedFiles(value)
+                  : undefined
+              }
               includedDirs={localIncludedDirs}
-              setIncludedDirs={showFileFilters ? (value: string) => setLocalIncludedDirs(value) : undefined}
+              setIncludedDirs={
+                showFileFilters
+                  ? (value: string) => setLocalIncludedDirs(value)
+                  : undefined
+              }
               includedFiles={localIncludedFiles}
-              setIncludedFiles={showFileFilters ? (value: string) => setLocalIncludedFiles(value) : undefined}
+              setIncludedFiles={
+                showFileFilters
+                  ? (value: string) => setLocalIncludedFiles(value)
+                  : undefined
+              }
             />
 
             {/* Token Input Section for refresh */}
@@ -199,39 +227,54 @@ export default function ModelSelectionModal({
                   accessToken={localAccessToken}
                   setAccessToken={setLocalAccessToken}
                   showTokenSection={showTokenSection}
-                  onToggleTokenSection={() => setShowTokenSection(!showTokenSection)}
+                  onToggleTokenSection={() =>
+                    setShowTokenSection(!showTokenSection)
+                  }
                   allowPlatformChange={false} // Don't allow platform change during refresh
                 />
               </>
             )}
             {/* Authorization Code Input */}
             {isAuthLoading && (
-                <div className="mb-4 p-3 bg-[var(--background)]/50 rounded-md border border-[var(--border-color)] text-sm text-[var(--muted)]">
-                  Loading authentication status...
-                </div>
+              <div className="mb-4 p-3 bg-[var(--background)]/50 rounded-md border border-[var(--border-color)] text-sm text-[var(--muted)]">
+                Loading authentication status...
+              </div>
             )}
             {!isAuthLoading && authRequired && (
-                <div className="mb-4 p-4 bg-[var(--background)]/50 rounded-md border border-[var(--border-color)]">
-                  <label htmlFor="authCode" className="block text-sm font-medium text-[var(--foreground)] mb-2">
-                    {t.form?.authorizationCode || 'Authorization Code'}
-                  </label>
-                  <input
-                      type="password"
-                      id="authCode"
-                      value={authCode || ''}
-                      onChange={(e) => setAuthCode?.(e.target.value)}
-                      className="input-japanese block w-full px-3 py-2 text-sm rounded-md bg-transparent text-[var(--foreground)] focus:outline-none focus:border-[var(--accent-primary)]"
-                      placeholder="Enter your authorization code"
-                  />
-                  <div className="flex items-center mt-2 text-xs text-[var(--muted)]">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 text-[var(--muted)]"
-                         fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    {t.form?.authorizationRequired || 'Authentication is required to generate the wiki.'}
-                  </div>
+              <div className="mb-4 p-4 bg-[var(--background)]/50 rounded-md border border-[var(--border-color)]">
+                <label
+                  htmlFor="authCode"
+                  className="block text-sm font-medium text-[var(--foreground)] mb-2"
+                >
+                  {t.form?.authorizationCode || "Authorization Code"}
+                </label>
+                <input
+                  type="password"
+                  id="authCode"
+                  value={authCode || ""}
+                  onChange={(e) => setAuthCode?.(e.target.value)}
+                  className="input-japanese block w-full px-3 py-2 text-sm rounded-md bg-transparent text-[var(--foreground)] focus:outline-none focus:border-[var(--accent-primary)]"
+                  placeholder="Enter your authorization code"
+                />
+                <div className="flex items-center mt-2 text-xs text-[var(--muted)]">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4 mr-1 text-[var(--muted)]"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  {t.form?.authorizationRequired ||
+                    "Authentication is required to generate the wiki."}
                 </div>
+              </div>
             )}
           </div>
 
@@ -242,14 +285,14 @@ export default function ModelSelectionModal({
               onClick={onClose}
               className="px-4 py-2 text-sm font-medium rounded-md border border-[var(--border-color)]/50 text-[var(--muted)] bg-transparent hover:bg-[var(--background)] hover:text-[var(--foreground)] transition-colors"
             >
-              {t.common?.cancel || 'Cancel'}
+              {t.common?.cancel || "Cancel"}
             </button>
             <button
               type="button"
               onClick={handleApply}
               className="px-4 py-2 text-sm font-medium rounded-md border border-transparent bg-[var(--accent-primary)]/90 text-white hover:bg-[var(--accent-primary)] transition-colors"
             >
-              {t.common?.submit || 'Submit'}
+              {t.common?.submit || "Submit"}
             </button>
           </div>
         </div>

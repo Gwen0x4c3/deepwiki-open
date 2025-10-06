@@ -119,6 +119,7 @@ export default function Home() {
     if (repositoryInput) {
       loadConfigFromCache(repositoryInput);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Provider-based model selection state
